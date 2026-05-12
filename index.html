@@ -1,0 +1,636 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>面積與周長 — 互動動畫</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', '微軟正黑體', sans-serif;
+    background: #f0f9ff;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+  }
+  h1 {
+    font-size: 1.6rem;
+    color: #1e3a5f;
+    margin-bottom: 20px;
+    text-align: center;
+  }
+  .card {
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.10);
+    padding: 24px;
+    width: 100%;
+    max-width: 860px;
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+  }
+  /* ── 左側面板 ── */
+  .panel {
+    flex: 0 0 210px;
+    background: #eff6ff;
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel h2 { font-size: 1rem; color: #1d4ed8; }
+  .panel label { font-size: 0.85rem; color: #374151; font-weight: 500; }
+  select, input[type=range] { width: 100%; margin-top: 4px; }
+  select {
+    padding: 6px 8px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    background: white;
+    font-size: 0.9rem;
+  }
+  .slider-row { display: flex; justify-content: space-between; font-size: 0.75rem; color: #6b7280; }
+  .slider-val { font-weight: 700; color: #1d4ed8; }
+  .btn {
+    width: 100%;
+    padding: 10px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter 0.15s;
+  }
+  .btn:hover { filter: brightness(0.9); }
+  .btn-perimeter { background: #2563eb; color: white; }
+  .btn-area      { background: #16a34a; color: white; }
+  .btn-reset     { background: #6b7280; color: white; }
+  .hidden { display: none !important; }
+
+  /* ── 右側 ── */
+  .main { flex: 1; min-width: 300px; display: flex; flex-direction: column; gap: 16px; }
+
+  /* 畫布區 */
+  .canvas-wrap {
+    background: #f9fafb;
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: visible;
+    padding: 40px;
+  }
+  #svgWrap { position: relative; }
+
+  /* 面積計數泡泡 */
+  #areaCounter {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: #16a34a;
+    color: white;
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    display: none;
+  }
+
+  /* 說明卡片 */
+  .info-card {
+    border-radius: 10px;
+    padding: 14px 16px;
+  }
+  .info-card.perimeter { background: #dbeafe; }
+  .info-card.area      { background: #dcfce7; }
+  .info-card h3 { font-size: 1rem; margin-bottom: 4px; }
+  .info-card h3.p-title { color: #1e40af; }
+  .info-card h3.a-title { color: #15803d; }
+  .info-card p  { font-size: 0.88rem; color: #374151; }
+  .formula-box {
+    background: white;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-top: 8px;
+    font-size: 0.88rem;
+    opacity: 0;
+    transform: translateY(10px);
+    transition: opacity 0.4s, transform 0.4s;
+  }
+  .formula-box.show { opacity: 1; transform: translateY(0); }
+  .formula-box .label { font-weight: 600; }
+  .formula-box .label.p { color: #1d4ed8; }
+  .formula-box .label.a { color: #16a34a; }
+  .big-num { font-size: 1.1rem; font-weight: 800; }
+
+  /* SVG 標注 */
+  .measure-label {
+    font-size: 13px;
+    font-weight: 700;
+    fill: #dc2626;
+    dominant-baseline: middle;
+    text-anchor: middle;
+    pointer-events: none;
+  }
+  .measure-bg {
+    fill: white;
+    stroke: #dc2626;
+    stroke-width: 1;
+    rx: 3;
+  }
+
+  /* 周長動畫 */
+  @keyframes dashAnim {
+    from { stroke-dashoffset: var(--dash-len); }
+    to   { stroke-dashoffset: 0; }
+  }
+  .perimeter-anim {
+    stroke-dasharray: var(--dash-len);
+    stroke-dashoffset: var(--dash-len);
+    animation: dashAnim 2.5s linear forwards;
+  }
+
+  /* 單元格填色 */
+  .ucell {
+    opacity: 0;
+    transition: opacity 0.25s;
+  }
+  .ucell.lit { opacity: 0.82; }
+</style>
+</head>
+<body>
+
+<h1>面積與周長 — 互動比較</h1>
+
+<div class="card">
+  <!-- ── 左側控制面板 ── -->
+  <div class="panel">
+    <h2>形狀設定</h2>
+
+    <div>
+      <label>選擇形狀</label>
+      <select id="shapeSelector">
+        <option value="rectangle">矩形</option>
+        <option value="square">正方形</option>
+        <option value="triangle">等腰三角形</option>
+      </select>
+    </div>
+
+    <div id="rectControls">
+      <div>
+        <label>長度：<span class="slider-val" id="lenVal">5</span> 格</label>
+        <input type="range" id="lenSlider" min="1" max="10" value="5">
+        <div class="slider-row"><span>1</span><span>10</span></div>
+      </div>
+      <div style="margin-top:10px">
+        <label>寬度：<span class="slider-val" id="widVal">3</span> 格</label>
+        <input type="range" id="widSlider" min="1" max="10" value="3">
+        <div class="slider-row"><span>1</span><span>10</span></div>
+      </div>
+    </div>
+
+    <div id="triControls" class="hidden">
+      <div>
+        <label>底邊：<span class="slider-val" id="baseVal">6</span> 格</label>
+        <input type="range" id="baseSlider" min="2" max="10" value="6" step="2">
+        <div class="slider-row"><span>2</span><span>10</span></div>
+      </div>
+      <div style="margin-top:10px">
+        <label>高度：<span class="slider-val" id="hgtVal">4</span> 格</label>
+        <input type="range" id="hgtSlider" min="1" max="10" value="4">
+        <div class="slider-row"><span>1</span><span>10</span></div>
+      </div>
+    </div>
+
+    <button class="btn btn-perimeter" id="btnPerimeter">顯示周長</button>
+    <button class="btn btn-area"      id="btnArea">顯示面積</button>
+    <button class="btn btn-reset"     id="btnReset">重置</button>
+  </div>
+
+  <!-- ── 右側主區 ── -->
+  <div class="main">
+
+    <!-- 畫布 -->
+    <div class="canvas-wrap">
+      <div id="svgWrap"></div>
+      <div id="areaCounter">面積：<span id="cntNow">0</span> / <span id="cntTotal">0</span> 格²</div>
+    </div>
+
+    <!-- 周長說明 -->
+    <div class="info-card perimeter">
+      <h3 class="p-title">周長 — 圍一圈的總長度</h3>
+      <p>沿著圖形邊界走一圈的距離，就是周長。</p>
+      <div class="formula-box" id="fPerimeter">
+        <span class="label p" id="fPLabel"></span><br>
+        周長 = <span class="big-num" id="fPVal"></span> 格
+      </div>
+    </div>
+
+    <!-- 面積說明 -->
+    <div class="info-card area">
+      <h3 class="a-title">面積 — 圖形內部的大小</h3>
+      <p>圖形裡面能放幾個小方格，就是面積（單位：格²）。</p>
+      <div class="formula-box" id="fArea">
+        <span class="label a" id="fALabel"></span><br>
+        面積 = <span class="big-num" id="fAVal"></span> 格²
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── 狀態 ──────────────────────────────────────────────
+const U = 36; // 每格像素
+let shape = 'rectangle', len = 5, wid = 3, base = 6, hgt = 4;
+let animTimer = null;
+
+// ── DOM refs ──────────────────────────────────────────
+const svgWrap      = document.getElementById('svgWrap');
+const areaCounter  = document.getElementById('areaCounter');
+const cntNow       = document.getElementById('cntNow');
+const cntTotal     = document.getElementById('cntTotal');
+const fPerimeter   = document.getElementById('fPerimeter');
+const fArea        = document.getElementById('fArea');
+const fPLabel      = document.getElementById('fPLabel');
+const fPVal        = document.getElementById('fPVal');
+const fALabel      = document.getElementById('fALabel');
+const fAVal        = document.getElementById('fAVal');
+const shapeSelector= document.getElementById('shapeSelector');
+const rectControls = document.getElementById('rectControls');
+const triControls  = document.getElementById('triControls');
+const lenSlider    = document.getElementById('lenSlider');
+const widSlider    = document.getElementById('widSlider');
+const baseSlider   = document.getElementById('baseSlider');
+const hgtSlider    = document.getElementById('hgtSlider');
+
+// ── 工具函式 ──────────────────────────────────────────
+function svgEl(tag, attrs) {
+  const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
+}
+
+// 畫量測標注（帶白底方框）
+function addLabel(svg, x, y, text, color='#dc2626') {
+  const g = svgEl('g', { class:'measure-group' });
+  const bg = svgEl('rect', { x: x-22, y: y-11, width:44, height:22, rx:4,
+    fill:'white', stroke: color, 'stroke-width':1.5 });
+  const t  = svgEl('text', { x, y, fill: color,
+    'font-size':'13', 'font-weight':'700',
+    'dominant-baseline':'middle', 'text-anchor':'middle',
+    'font-family':'Noto Sans TC,微軟正黑體,sans-serif' });
+  t.textContent = text;
+  g.appendChild(bg);
+  g.appendChild(t);
+  svg.appendChild(g);
+  return g;
+}
+
+// ── 主繪製 ────────────────────────────────────────────
+function draw() {
+  svgWrap.innerHTML = '';
+  resetUI();
+
+  if (shape === 'rectangle' || shape === 'square') {
+    drawRect();
+  } else {
+    drawTri();
+  }
+  updateFormulas();
+}
+
+// 矩形 / 正方形
+function drawRect() {
+  const W = wid * U, H = len * U;
+  const PAD = 50; // 留給標注的空間
+
+  const svg = svgEl('svg', {
+    width: W + PAD*2, height: H + PAD*2,
+    viewBox: `${-PAD} ${-PAD} ${W+PAD*2} ${H+PAD*2}`,
+    overflow: 'visible'
+  });
+
+  // 網格線
+  const grid = svgEl('g', { id:'grid' });
+  for (let r = 1; r < len; r++) {
+    grid.appendChild(svgEl('line', {
+      x1:0, y1:r*U, x2:W, y2:r*U,
+      stroke:'#d1d5db', 'stroke-width':1 }));
+  }
+  for (let c = 1; c < wid; c++) {
+    grid.appendChild(svgEl('line', {
+      x1:c*U, y1:0, x2:c*U, y2:H,
+      stroke:'#d1d5db', 'stroke-width':1 }));
+  }
+  svg.appendChild(grid);
+
+  // 單元格（面積用）
+  const cells = svgEl('g', { id:'cells' });
+  for (let r = 0; r < len; r++) {
+    for (let c = 0; c < wid; c++) {
+      const rc = svgEl('rect', {
+        x: c*U+1, y: r*U+1, width: U-2, height: U-2,
+        fill:'#86efac', rx:2,
+        'data-row': r, class:'ucell'
+      });
+      cells.appendChild(rc);
+    }
+  }
+  svg.appendChild(cells);
+
+  // 外框（白底 + 藍邊）
+  svg.appendChild(svgEl('rect', {
+    x:0, y:0, width:W, height:H,
+    fill:'none', stroke:'#93c5fd', 'stroke-width':2
+  }));
+
+  // 周長高亮線（初始隱藏）
+  const perimLen = 2*(W+H);
+  const pline = svgEl('rect', {
+    id:'pline',
+    x:0, y:0, width:W, height:H,
+    fill:'none', stroke:'#2563eb', 'stroke-width':8,
+    'stroke-linecap':'round', 'stroke-linejoin':'round',
+    style:`--dash-len:${perimLen}`,
+    opacity:0
+  });
+  svg.appendChild(pline);
+
+  svgWrap.appendChild(svg);
+
+  // 邊長標注（初始隱藏）
+  const mg = svgEl('g', { id:'measureGroup', opacity:0 });
+  // 上邊（寬）
+  addLabel(mg, W/2, -28, `寬=${wid}`);
+  // 下邊（寬）
+  addLabel(mg, W/2, H+28, `寬=${wid}`);
+  // 左邊（長）
+  const tL = addLabel(mg, -30, H/2, `長=${len}`);
+  // 右邊（長）
+  const tR = addLabel(mg, W+30, H/2, `長=${len}`);
+  svg.appendChild(mg);
+}
+
+// 等腰三角形
+function drawTri() {
+  const W = base * U, H = hgt * U;
+  const PAD = 60;
+  const svg = svgEl('svg', {
+    width: W + PAD*2, height: H + PAD*2,
+    viewBox: `${-PAD} ${-PAD} ${W+PAD*2} ${H+PAD*2}`,
+    overflow:'visible'
+  });
+
+  // 三角形頂點：左下、頂點、右下
+  const pts = [[0, H], [W/2, 0], [W, H]];
+  const ptsStr = pts.map(p=>p.join(',')).join(' ');
+
+  // 單元格（面積用）
+  const cells = svgEl('g', { id:'cells' });
+  const byRow = {};
+  for (let r = 0; r < hgt; r++) {
+    for (let c = 0; c < base; c++) {
+      const cx = c*U + U/2, cy = r*U + U/2;
+      if (inTri(cx, cy, 0, H, W/2, 0, W, H)) {
+        const rc = svgEl('rect', {
+          x: c*U+1, y: r*U+1, width:U-2, height:U-2,
+          fill:'#86efac', rx:2,
+          'data-row': r, class:'ucell'
+        });
+        if (!byRow[r]) byRow[r] = [];
+        byRow[r].push(rc);
+        cells.appendChild(rc);
+      }
+    }
+  }
+  svg.appendChild(cells);
+
+  // 三角形外框
+  svg.appendChild(svgEl('polygon', {
+    points: ptsStr,
+    fill:'none', stroke:'#93c5fd', 'stroke-width':2
+  }));
+
+  // 高線（虛線）
+  svg.appendChild(svgEl('line', {
+    x1:W/2, y1:0, x2:W/2, y2:H,
+    stroke:'#fbbf24', 'stroke-width':2, 'stroke-dasharray':'6 4',
+    id:'heightLine', opacity:0
+  }));
+
+  // 周長高亮
+  const sideLen = Math.sqrt((W/2)**2 + H**2);
+  const perimLen = W + 2*sideLen;
+  const pPoly = svgEl('polygon', {
+    id:'pline',
+    points: ptsStr,
+    fill:'none', stroke:'#2563eb', 'stroke-width':8,
+    'stroke-linecap':'round', 'stroke-linejoin':'round',
+    style:`--dash-len:${Math.round(perimLen)}`,
+    opacity:0
+  });
+  svg.appendChild(pPoly);
+
+  // 邊長標注
+  const mg = svgEl('g', { id:'measureGroup', opacity:0 });
+  // 底邊
+  addLabel(mg, W/2, H+32, `底=${base}`);
+  // 左斜邊中點
+  addLabel(mg, W/4 - 20, H/2, `斜≈${Math.round(sideLen/U*10)/10}`);
+  // 右斜邊中點
+  addLabel(mg, W*3/4 + 20, H/2, `斜≈${Math.round(sideLen/U*10)/10}`);
+  // 高（只在面積時顯示）
+  const hLabel = addLabel(mg, W/2 + 28, H/2, `高=${hgt}`, '#d97706');
+  hLabel.id = 'hLabel';
+  hLabel.setAttribute('opacity', 0);
+  svg.appendChild(mg);
+
+  svgWrap.appendChild(svg);
+}
+
+function inTri(px,py, x1,y1, x2,y2, x3,y3) {
+  const sign = (p1x,p1y,p2x,p2y,p3x,p3y) =>
+    (p1x-p3x)*(p2y-p3y) - (p2x-p3x)*(p1y-p3y);
+  const d1 = sign(px,py,x1,y1,x2,y2);
+  const d2 = sign(px,py,x2,y2,x3,y3);
+  const d3 = sign(px,py,x3,y3,x1,y1);
+  const hn = (d1<0)||(d2<0)||(d3<0);
+  const hp = (d1>0)||(d2>0)||(d3>0);
+  return !(hn && hp);
+}
+
+// ── 周長動畫 ──────────────────────────────────────────
+function showPerimeter() {
+  resetAnim();
+  const pline = document.getElementById('pline');
+  const mg    = document.getElementById('measureGroup');
+  if (!pline) return;
+
+  pline.setAttribute('opacity', 1);
+  pline.classList.add('perimeter-anim');
+  if (mg) mg.setAttribute('opacity', 1);
+
+  // 三角形的高線不顯示
+  const hl = document.getElementById('hLabel');
+  if (hl) hl.setAttribute('opacity', 0);
+  const hLine = document.getElementById('heightLine');
+  if (hLine) hLine.setAttribute('opacity', 0);
+
+  fPerimeter.classList.add('show');
+}
+
+// ── 面積動畫（逐行填色）────────────────────────────────
+function showArea() {
+  resetAnim();
+
+  const mg    = document.getElementById('measureGroup');
+  const hl    = document.getElementById('hLabel');
+  const hLine = document.getElementById('heightLine');
+
+  if (mg) mg.setAttribute('opacity', 1);
+  if (hl) hl.setAttribute('opacity', 1);
+  if (hLine) hLine.setAttribute('opacity', 1);
+
+  fArea.classList.add('show');
+
+  // 收集各列的 cell
+  const all  = Array.from(document.querySelectorAll('.ucell'));
+  const rows = {};
+  for (const c of all) {
+    const r = c.getAttribute('data-row');
+    if (!rows[r]) rows[r] = [];
+    rows[r].push(c);
+  }
+  const rowKeys = Object.keys(rows).map(Number).sort((a,b)=>a-b);
+
+  let totalCells = all.length;
+  cntTotal.textContent = shape === 'triangle'
+    ? (base * hgt / 2)
+    : (len * wid);
+  // 對三角形用實際格數顯示計數
+  totalCells = all.length;
+  cntNow.textContent = 0;
+  areaCounter.style.display = 'block';
+
+  let idx = 0, cnt = 0;
+  animTimer = setInterval(() => {
+    if (idx >= rowKeys.length) { clearInterval(animTimer); return; }
+    for (const c of rows[rowKeys[idx]]) {
+      c.classList.add('lit');
+      cnt++;
+    }
+    cntNow.textContent = cnt;
+    idx++;
+  }, 400);
+}
+
+// ── 重置 ──────────────────────────────────────────────
+function resetAnim() {
+  clearInterval(animTimer);
+  const pline = document.getElementById('pline');
+  const mg    = document.getElementById('measureGroup');
+  const hl    = document.getElementById('hLabel');
+  const hLine = document.getElementById('heightLine');
+
+  if (pline) {
+    pline.setAttribute('opacity', 0);
+    pline.classList.remove('perimeter-anim');
+    // 重新觸發動畫
+    void pline.offsetWidth;
+  }
+  if (mg) mg.setAttribute('opacity', 0);
+  if (hl) hl.setAttribute('opacity', 0);
+  if (hLine) hLine.setAttribute('opacity', 0);
+
+  document.querySelectorAll('.ucell').forEach(c => c.classList.remove('lit'));
+  areaCounter.style.display = 'none';
+  fPerimeter.classList.remove('show');
+  fArea.classList.remove('show');
+}
+
+function resetUI() {
+  clearInterval(animTimer);
+  areaCounter.style.display = 'none';
+  fPerimeter.classList.remove('show');
+  fArea.classList.remove('show');
+}
+
+// ── 公式更新 ──────────────────────────────────────────
+function updateFormulas() {
+  if (shape === 'rectangle') {
+    fPLabel.textContent = `2 × (長 + 寬) = 2 × (${len} + ${wid}) = ${2*(len+wid)}`;
+    fPVal.textContent   = 2*(len+wid);
+    fALabel.textContent = `長 × 寬 = ${len} × ${wid} = ${len*wid}`;
+    fAVal.textContent   = len*wid;
+  } else if (shape === 'square') {
+    fPLabel.textContent = `4 × 邊長 = 4 × ${len} = ${4*len}`;
+    fPVal.textContent   = 4*len;
+    fALabel.textContent = `邊長 × 邊長 = ${len} × ${len} = ${len*len}`;
+    fAVal.textContent   = len*len;
+  } else {
+    const side = Math.sqrt((base/2)**2 + hgt**2);
+    const p    = base + 2*side;
+    fPLabel.textContent = `底 + 左斜 + 右斜 = ${base} + ${side.toFixed(2)} + ${side.toFixed(2)} ≈ ${p.toFixed(2)}`;
+    fPVal.textContent   = p.toFixed(2);
+    fALabel.textContent = `底 × 高 ÷ 2 = ${base} × ${hgt} ÷ 2 = ${base*hgt/2}`;
+    fAVal.textContent   = base*hgt/2;
+  }
+}
+
+// ── 事件綁定 ──────────────────────────────────────────
+shapeSelector.addEventListener('change', () => {
+  shape = shapeSelector.value;
+  rectControls.classList.toggle('hidden', shape === 'triangle');
+  triControls.classList.toggle('hidden', shape !== 'triangle');
+  if (shape === 'square') {
+    wid = len;
+    widSlider.value = len;
+    document.getElementById('widVal').textContent = wid;
+    widSlider.disabled = true;
+  } else {
+    widSlider.disabled = false;
+  }
+  draw();
+});
+
+lenSlider.addEventListener('input', () => {
+  len = +lenSlider.value;
+  document.getElementById('lenVal').textContent = len;
+  if (shape === 'square') {
+    wid = len;
+    widSlider.value = len;
+    document.getElementById('widVal').textContent = wid;
+  }
+  draw();
+});
+widSlider.addEventListener('input', () => {
+  wid = +widSlider.value;
+  document.getElementById('widVal').textContent = wid;
+  draw();
+});
+baseSlider.addEventListener('input', () => {
+  base = +baseSlider.value;
+  document.getElementById('baseVal').textContent = base;
+  draw();
+});
+hgtSlider.addEventListener('input', () => {
+  hgt = +hgtSlider.value;
+  document.getElementById('hgtVal').textContent = hgt;
+  draw();
+});
+
+document.getElementById('btnPerimeter').addEventListener('click', showPerimeter);
+document.getElementById('btnArea').addEventListener('click', showArea);
+document.getElementById('btnReset').addEventListener('click', () => { resetAnim(); draw(); });
+
+// 初始繪製
+draw();
+</script>
+</body>
+</html>
